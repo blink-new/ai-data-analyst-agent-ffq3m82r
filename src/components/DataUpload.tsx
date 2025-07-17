@@ -86,7 +86,7 @@ export function DataUpload({ onDataUpload }: DataUploadProps) {
           type: 'json',
           name: 'JSON Dataset',
           headers,
-          rows,
+          rows, // Full dataset for AI analysis
           columns: headers.length,
           totalRows: rows.length,
           columnInfo,
@@ -183,7 +183,7 @@ export function DataUpload({ onDataUpload }: DataUploadProps) {
       type: 'csv',
       name: 'CSV Dataset',
       headers,
-      rows,
+      rows, // Full dataset for AI analysis
       columns: headers.length,
       totalRows: rows.length,
       columnInfo,
