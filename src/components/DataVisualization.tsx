@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -13,8 +13,103 @@ interface DataVisualizationProps {
 export function DataVisualization({ dataset, analysisResults }: DataVisualizationProps) {
   const [selectedChart, setSelectedChart] = useState('bar')
   const [selectedColumn, setSelectedColumn] = useState('')
+  const [selectedXColumn, setSelectedXColumn] = useState('')
 
-  // Sample data for demonstration
+  // Get numeric and categorical columns using useMemo
+  const numericColumns = useMemo(() => 
+    dataset?.columnInfo?.filter((col: any) => col.type === 'number') || [], 
+    [dataset?.columnInfo]
+  )
+  const categoricalColumns = useMemo(() => 
+    dataset?.columnInfo?.filter((col: any) => col.type === 'text') || [], 
+    [dataset?.columnInfo]
+  )
+  const dateColumns = useMemo(() => 
+    dataset?.columnInfo?.filter((col: any) => col.type === 'date') || [], 
+    [dataset?.columnInfo]
+  )
+
+  // Set default columns when dataset changes
+  useEffect(() => {
+    if (dataset?.columnInfo) {
+      if (numericColumns.length > 0 && !selectedColumn) {
+        setSelectedColumn(numericColumns[0].name)
+      }
+      if ((categoricalColumns.length > 0 || dateColumns.length > 0) && !selectedXColumn) {
+        const xCol = categoricalColumns[0] || dateColumns[0]
+        if (xCol) setSelectedXColumn(xCol.name)
+      }
+    }
+  }, [dataset?.columnInfo, numericColumns, categoricalColumns, dateColumns, selectedColumn, selectedXColumn])
+
+  // Generate chart data from actual dataset
+  const generateChartData = () => {
+    if (!dataset?.rows || !selectedColumn) return []
+
+    if (selectedChart === 'pie') {
+      // For pie chart, group by categorical column and sum numeric values
+      const groupColumn = selectedXColumn || categoricalColumns[0]?.name
+      if (!groupColumn) return []
+
+      const grouped = dataset.rows.reduce((acc: any, row: any) => {
+        const key = row[groupColumn] || 'Unknown'
+        const value = parseFloat(row[selectedColumn]) || 0
+        acc[key] = (acc[key] || 0) + value
+        return acc
+      }, {})
+
+      const colors = ['#2563EB', '#7C3AED', '#059669', '#DC2626', '#F59E0B', '#EF4444', '#8B5CF6', '#10B981']
+      return Object.entries(grouped).map(([name, value], index) => ({
+        name,
+        value: value as number,
+        color: colors[index % colors.length]
+      }))
+    } else {
+      // For bar/line charts
+      if (!selectedXColumn) {
+        // If no X column selected, create frequency distribution
+        const values = dataset.rows.map((row: any) => parseFloat(row[selectedColumn])).filter(v => !isNaN(v))
+        const sorted = values.sort((a, b) => a - b)
+        const bins = 10
+        const min = sorted[0]
+        const max = sorted[sorted.length - 1]
+        const binSize = (max - min) / bins
+
+        const binData = []
+        for (let i = 0; i < bins; i++) {
+          const binStart = min + i * binSize
+          const binEnd = min + (i + 1) * binSize
+          const count = values.filter(v => v >= binStart && v < binEnd).length
+          binData.push({
+            name: `${binStart.toFixed(1)}-${binEnd.toFixed(1)}`,
+            value: count
+          })
+        }
+        return binData
+      } else {
+        // Group by X column and aggregate Y column
+        const grouped = dataset.rows.reduce((acc: any, row: any) => {
+          const key = row[selectedXColumn] || 'Unknown'
+          const value = parseFloat(row[selectedColumn]) || 0
+          if (!acc[key]) {
+            acc[key] = { sum: 0, count: 0 }
+          }
+          acc[key].sum += value
+          acc[key].count += 1
+          return acc
+        }, {})
+
+        return Object.entries(grouped).map(([name, data]: [string, any]) => ({
+          name,
+          value: data.sum / data.count // Average
+        })).slice(0, 20) // Limit to 20 items for readability
+      }
+    }
+  }
+
+  const chartData = generateChartData()
+
+  // Sample data fallback for demo
   const sampleData = [
     { name: 'Jan', value: 400, sales: 240 },
     { name: 'Feb', value: 300, sales: 139 },
@@ -38,11 +133,14 @@ export function DataVisualization({ dataset, analysisResults }: DataVisualizatio
   ]
 
   const renderChart = () => {
+    const dataToUse = chartData.length > 0 ? chartData : sampleData
+    const pieDataToUse = chartData.length > 0 ? chartData : pieData
+
     switch (selectedChart) {
       case 'bar':
         return (
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={sampleData}>
+            <BarChart data={dataToUse}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis />
@@ -54,7 +152,7 @@ export function DataVisualization({ dataset, analysisResults }: DataVisualizatio
       case 'line':
         return (
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={sampleData}>
+            <LineChart data={dataToUse}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis />
@@ -68,7 +166,7 @@ export function DataVisualization({ dataset, analysisResults }: DataVisualizatio
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
-                data={pieData}
+                data={pieDataToUse}
                 cx="50%"
                 cy="50%"
                 labelLine={false}
@@ -77,8 +175,8 @@ export function DataVisualization({ dataset, analysisResults }: DataVisualizatio
                 fill="#8884d8"
                 dataKey="value"
               >
-                {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
+                {pieDataToUse.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color || '#2563EB'} />
                 ))}
               </Pie>
               <Tooltip />
@@ -117,7 +215,7 @@ export function DataVisualization({ dataset, analysisResults }: DataVisualizatio
           <CardTitle>Chart Configuration</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Chart Type
@@ -141,16 +239,40 @@ export function DataVisualization({ dataset, analysisResults }: DataVisualizatio
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Data Column
+                Y-Axis (Value)
               </label>
               <Select value={selectedColumn} onValueChange={setSelectedColumn}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select column" />
+                  <SelectValue placeholder="Select value column" />
                 </SelectTrigger>
                 <SelectContent>
-                  {dataset.columnInfo?.map((col: any, idx: number) => (
+                  {numericColumns.map((col: any, idx: number) => (
                     <SelectItem key={idx} value={col.name}>
-                      {col.name}
+                      <div className="flex items-center justify-between w-full">
+                        <span>{col.name}</span>
+                        <span className="text-xs text-gray-500">{col.type}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                X-Axis (Category)
+              </label>
+              <Select value={selectedXColumn} onValueChange={setSelectedXColumn}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category column" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...categoricalColumns, ...dateColumns].map((col: any, idx: number) => (
+                    <SelectItem key={idx} value={col.name}>
+                      <div className="flex items-center justify-between w-full">
+                        <span>{col.name}</span>
+                        <span className="text-xs text-gray-500">{col.type}</span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -173,7 +295,11 @@ export function DataVisualization({ dataset, analysisResults }: DataVisualizatio
             {renderChart()}
           </div>
           <div className="text-sm text-gray-600">
-            <p>📊 This is a sample visualization. In a full implementation, this would display your actual data.</p>
+            {chartData.length > 0 ? (
+              <p>📊 Displaying data from your uploaded dataset. Select different columns to explore various aspects of your data.</p>
+            ) : (
+              <p>📊 Sample visualization shown. Upload data and select columns to see your actual data visualized.</p>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -75,10 +75,30 @@ export function Dashboard({ user }: DashboardProps) {
                 {currentDataset && (
                   <Card className="p-4">
                     <h3 className="font-medium text-gray-900 mb-2">Current Dataset</h3>
-                    <p className="text-sm text-gray-600">{currentDataset.name}</p>
+                    <p className="text-sm text-gray-600">{currentDataset.name || currentDataset.filename}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {currentDataset.rows} rows • {currentDataset.columns} columns
+                      {currentDataset.totalRows || currentDataset.rows} rows • {currentDataset.columns} columns
                     </p>
+                    <p className="text-xs text-gray-500">
+                      {currentDataset.type?.toUpperCase()} • {((currentDataset.size || 0) / 1024).toFixed(1)}KB
+                    </p>
+                    {currentDataset.columnInfo && (
+                      <div className="mt-2">
+                        <p className="text-xs text-gray-500 mb-1">Column Types:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {currentDataset.columnInfo.slice(0, 3).map((col: any, idx: number) => (
+                            <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded">
+                              {col.name} ({col.type})
+                            </span>
+                          ))}
+                          {currentDataset.columnInfo.length > 3 && (
+                            <span className="text-xs text-gray-400">
+                              +{currentDataset.columnInfo.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </Card>
                 )}
                 <Card className="p-4">

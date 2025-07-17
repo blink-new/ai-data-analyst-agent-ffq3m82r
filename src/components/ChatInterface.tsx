@@ -56,19 +56,52 @@ export function ChatInterface({ currentDataset, onAnalysisResult }: ChatInterfac
       let prompt = inputValue
 
       if (currentDataset) {
-        prompt = `I have a dataset called "${currentDataset.name}" with ${currentDataset.rows} rows and ${currentDataset.columns} columns. The columns are: ${currentDataset.columnInfo?.map((col: any) => col.name).join(', ')}. 
+        // Create detailed dataset context
+        const datasetContext = `
+Dataset Information:
+- Name: ${currentDataset.name}
+- Type: ${currentDataset.type?.toUpperCase()}
+- Rows: ${currentDataset.totalRows || currentDataset.rows}
+- Columns: ${currentDataset.columns}
 
-User question: ${inputValue}
+Column Details:
+${currentDataset.columnInfo?.map((col: any) => 
+  `- ${col.name} (${col.type}): ${col.sampleValues?.slice(0, 3).join(', ')}${col.nullCount ? ` [${col.nullCount} null values]` : ''}`
+).join('\n') || 'Column information not available'}
 
-Please provide a helpful analysis response. If the user is asking for a chart or visualization, describe what type of chart would be appropriate and what data should be displayed.`
+Data Preview (first few rows):
+${currentDataset.preview ? JSON.stringify(currentDataset.preview.slice(0, 3), null, 2) : 'Preview not available'}
+`
+
+        prompt = `You are an expert data analyst. I have uploaded a dataset with the following details:
+
+${datasetContext}
+
+User Question: "${inputValue}"
+
+Please provide a comprehensive analysis response that includes:
+1. Direct answer to the user's question
+2. Specific insights based on the actual data structure
+3. If requesting visualization, suggest the most appropriate chart type and explain why
+4. Identify any data quality issues or interesting patterns you notice
+5. Provide actionable recommendations
+
+Be specific and reference the actual column names and data types in your response. If the user asks for statistical analysis, provide detailed explanations of what the statistics mean in the context of their data.`
       } else {
-        prompt = `The user hasn't uploaded a dataset yet. Please remind them to upload data first and suggest what they can do once they have data uploaded. User message: ${inputValue}`
+        prompt = `The user hasn't uploaded a dataset yet. Please remind them to upload data first and suggest what they can do once they have data uploaded. 
+
+User message: "${inputValue}"
+
+Provide helpful guidance about:
+1. What file formats are supported (CSV, JSON, Excel)
+2. What kinds of analysis they can perform once data is uploaded
+3. Example questions they could ask about their data`
       }
 
       const { text } = await blink.ai.generateText({
         prompt,
         model: 'gpt-4o-mini',
-        maxTokens: 500
+        maxTokens: 800
       })
 
       const assistantMessage: Message = {

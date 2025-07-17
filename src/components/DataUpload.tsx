@@ -41,7 +41,57 @@ export function DataUpload({ onDataUpload }: DataUploadProps) {
         data = parseCSV(text)
       } else if (file.type === 'application/json' || file.name.endsWith('.json')) {
         const text = await file.text()
-        data = JSON.parse(text)
+        const jsonData = JSON.parse(text)
+        
+        // Handle different JSON structures
+        let rows = []
+        if (Array.isArray(jsonData)) {
+          rows = jsonData
+        } else if (jsonData.data && Array.isArray(jsonData.data)) {
+          rows = jsonData.data
+        } else if (typeof jsonData === 'object') {
+          // Convert single object to array
+          rows = [jsonData]
+        } else {
+          throw new Error('Unsupported JSON structure')
+        }
+        
+        if (rows.length === 0) throw new Error('No data found in JSON file')
+        
+        // Extract headers from first object
+        const headers = Object.keys(rows[0])
+        
+        // Analyze column types
+        const columnInfo = headers.map(header => {
+          const sampleValues = rows.slice(0, 100).map(row => row[header]).filter(v => v !== null && v !== undefined && v !== '')
+          const numericValues = sampleValues.filter(v => !isNaN(Number(v)) && v !== '')
+          const dateValues = sampleValues.filter(v => !isNaN(Date.parse(v)))
+          
+          let type = 'text'
+          if (numericValues.length > sampleValues.length * 0.8) {
+            type = 'number'
+          } else if (dateValues.length > sampleValues.length * 0.8) {
+            type = 'date'
+          }
+          
+          return {
+            name: header,
+            type,
+            sampleValues: sampleValues.slice(0, 5),
+            nullCount: rows.filter(row => !row[header] || row[header] === '').length
+          }
+        })
+        
+        data = {
+          type: 'json',
+          name: 'JSON Dataset',
+          headers,
+          rows,
+          columns: headers.length,
+          totalRows: rows.length,
+          columnInfo,
+          preview: rows.slice(0, 10)
+        }
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         // For demo purposes, we'll simulate Excel processing
         data = {
@@ -76,20 +126,68 @@ export function DataUpload({ onDataUpload }: DataUploadProps) {
 
   const parseCSV = (text: string) => {
     const lines = text.split('\n').filter(line => line.trim())
-    const headers = lines[0].split(',').map(h => h.trim())
+    if (lines.length === 0) throw new Error('Empty CSV file')
+    
+    // Better CSV parsing that handles quoted values
+    const parseCSVLine = (line: string) => {
+      const result = []
+      let current = ''
+      let inQuotes = false
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i]
+        if (char === '"') {
+          inQuotes = !inQuotes
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim())
+          current = ''
+        } else {
+          current += char
+        }
+      }
+      result.push(current.trim())
+      return result
+    }
+    
+    const headers = parseCSVLine(lines[0]).map(h => h.replace(/"/g, ''))
     const rows = lines.slice(1).map(line => {
-      const values = line.split(',').map(v => v.trim())
+      const values = parseCSVLine(line).map(v => v.replace(/"/g, ''))
       return headers.reduce((obj, header, index) => {
         obj[header] = values[index] || ''
         return obj
       }, {} as any)
     })
     
+    // Analyze column types
+    const columnInfo = headers.map(header => {
+      const sampleValues = rows.slice(0, 100).map(row => row[header]).filter(v => v !== '')
+      const numericValues = sampleValues.filter(v => !isNaN(Number(v)) && v !== '')
+      const dateValues = sampleValues.filter(v => !isNaN(Date.parse(v)))
+      
+      let type = 'text'
+      if (numericValues.length > sampleValues.length * 0.8) {
+        type = 'number'
+      } else if (dateValues.length > sampleValues.length * 0.8) {
+        type = 'date'
+      }
+      
+      return {
+        name: header,
+        type,
+        sampleValues: sampleValues.slice(0, 5),
+        nullCount: rows.filter(row => !row[header] || row[header].trim() === '').length
+      }
+    })
+    
     return {
       type: 'csv',
+      name: 'CSV Dataset',
       headers,
       rows,
-      totalRows: rows.length
+      columns: headers.length,
+      totalRows: rows.length,
+      columnInfo,
+      preview: rows.slice(0, 10)
     }
   }
 
